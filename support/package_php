@@ -41,11 +41,13 @@ tar xzf php-${PHP_VERSION}.tar.gz
 # build and package php for heroku  
 vulcan build -v \
     -n php \
-    -c "./configure --prefix=/app/vendor/php --with-curl=/usr/lib --with-config-file-path=/app/vendor/php --with-zlib --with-openssl --enable-zip && make install" \
+    -c "./configure --prefix=/app/vendor/php --with-curl=/usr/lib --with-config-file-path=/app/vendor/php --with-config-file-scan-dir=/app/vendor/php/conf.d --with-zlib --with-openssl --enable-zip && make install" \
     -p /app/vendor/php \
     -s php-${PHP_VERSION} \
     -o $tempdir/php-${PHP_VERSION}.tgz
 
+echo "Uploading to s3"
 # upload php to s3
 $basedir/aws/s3 put $S3_BUCKET \
     php-${PHP_VERSION}.tgz $tempdir/php-${PHP_VERSION}.tgz
+echo "Build, package and upload complete"

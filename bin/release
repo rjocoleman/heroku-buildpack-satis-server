@@ -7,8 +7,7 @@ cat <<EOF
 addons:
   scheduler:standard
 config_vars:
-  GITHUB_API_KEY:
-  PATH: "vendor/satis/bin:vendor/bin:vendor/php/bin:/usr/local/bin:/usr/bin:/bin"
+  PATH: "/app/vendor/satis/bin:/app/vendor/bin:/app/vendor/php/bin:/usr/local/bin:/usr/bin:/bin"
 default_process_types:
-  web: php -S 0.0.0.0:\$PORT -t web/
+  web: php -S 0.0.0.0:\$PORT www/router.php
 EOF

@@ -11,54 +11,97 @@ indent() {
     sed $SED_FLAG "$RE"
 }
 
+#variables
 DEFAULT_PHP_VERSION="5.4.11"
 PHP_S3_BUCKET="https://s3.amazonaws.com/rjoc-heroku"
 
 PHP_VENDOR="vendor/php"
 COMPOSER_LOCATION="https://getcomposer.org/composer.phar"
 COMPOSER_VENDOR="vendor/bin"
-SATIS_LOCATION="https://github.com/composer/satis/tarball/master"
-#GITHUB_API_KEY="" # used for the inital index) add yours or enable https://devcenter.heroku.com/articles/labs-user-env-compile
+AWSCMD_LOCATION="https://raw.github.com/timkay/aws/master/aws"
+
+#GITHUB_API_KEY="" # add yours or enable https://devcenter.heroku.com/articles/labs-user-env-compile
+#AWS_ACCESS_KEY="" # add yours or enable https://devcenter.heroku.com/articles/labs-user-env-compile
+#AWS_SECRET_KEY="" # add yours or enable https://devcenter.heroku.com/articles/labs-user-env-compile
+#S3_BUCKET="" # add yours or enable https://devcenter.heroku.com/articles/labs-user-env-compile
+
+## you shouldn't need to edit below this line
+
+# paths in the build system
+BIN_DIR=$(cd $(dirname $0); pwd) # absolute path
+ROOT_DIR=$(dirname $BIN_DIR)
+BUILD_DIR=$1
+CACHE_DIR=$2
+
+export PHP_INI_SCAN_DIR=$BUILD_DIR/$PHP_VENDOR/conf.d/
 
 # Work in the build directory
-cd $1
+cd $BUILD_DIR
 
 # vendor php
 echo "-----> Vendoring PHP (v${DEFAULT_PHP_VERSION})"
-mkdir -p $1/$PHP_VENDOR
-curl --silent --max-time 60 --location $PHP_S3_BUCKET/php-$DEFAULT_PHP_VERSION.tgz | tar xz -C $1/$PHP_VENDOR
-echo "date.timezone='UTC'" >> $1/$PHP_VENDOR/timezone.ini
+mkdir -p $BUILD_DIR/$PHP_VENDOR
+curl --silent --max-time 60 --location $PHP_S3_BUCKET/php-$DEFAULT_PHP_VERSION.tgz | tar xz -C $BUILD_DIR/$PHP_VENDOR
+mkdir $BUILD_DIR/$PHP_VENDOR/conf.d
+echo "date.timezone='UTC'" >> $BUILD_DIR/$PHP_VENDOR/conf.d/timezone.ini
 echo "Complete" | indent
 
 # vendor composer
 echo "-----> Vendoring Composer"
-mkdir -p $1/$COMPOSER_VENDOR
-curl --silent --max-time 60 --location "$COMPOSER_LOCATION" > $1/$COMPOSER_VENDOR/composer.phar
-mkdir $1/.composer
-$1/$PHP_VENDOR/bin/php $1/$COMPOSER_VENDOR/composer.phar config --global github-oauth.github.com $GITHUB_API_KEY
-chmod 0755 $1/$COMPOSER_VENDOR/composer.phar
+mkdir -p $BUILD_DIR/$COMPOSER_VENDOR
+curl --silent --max-time 60 --location "$COMPOSER_LOCATION" > $BUILD_DIR/$COMPOSER_VENDOR/composer.phar
+mkdir $BUILD_DIR/.composer
+if [ -n "$GITHUB_API_KEY" ]; then
+    $BUILD_DIR/$PHP_VENDOR/bin/php $BUILD_DIR/$COMPOSER_VENDOR/composer.phar config --global github-oauth.github.com $GITHUB_API_KEY
+fi
+chmod 0755 $BUILD_DIR/$COMPOSER_VENDOR/composer.phar
 echo "Complete" | indent
 
-mkdir $1/profile.d
-cat >>$1/profile.d/composer.sh <<EOF
+mkdir $BUILD_DIR/.profile.d
+cat >>$BUILD_DIR/.profile.d/composer.sh <<EOF
 #!/usr/bin/env bash
+
+PATH=/app/vendor/heroku-client/bin:/app/vendor/satis/bin:/app/vendor/bin:/app/vendor/php/bin:/usr/local/bin:/usr/bin:/bin
 
 if [ -n "\$GITHUB_API_KEY" ]; then
     composer.phar config --global github-oauth.github.com \$GITHUB_API_KEY;
 fi
 EOF
+chmod +x $BUILD_DIR/.profile.d/composer.sh
+
+# vendor s3-bash
+echo "-----> Vendoring timkay/aws"
+cd $BUILD_DIR/vendor
+curl --silent --max-time 60 --location $AWSCMD_LOCATION -o bin/aws
+chmod 0755 $BUILD_DIR/vendor/bin/aws
+echo "Complete" | indent
 
 # vendor satis
 echo "-----> Vendoring composer/satis"
-cd $1/vendor
-$1/$PHP_VENDOR/bin/php $1/$COMPOSER_VENDOR/composer.phar create-project composer/satis --stability=dev --prefer-dist | indent
-chmod 0755 $1/vendor/satis/bin/satis $1/vendor/satis/bin/compile
-cd $1
+cd $BUILD_DIR/vendor
+$BUILD_DIR/$PHP_VENDOR/bin/php $BUILD_DIR/$COMPOSER_VENDOR/composer.phar create-project composer/satis --stability=dev --prefer-dist --no-interaction | indent
+chmod 0755 $BUILD_DIR/vendor/satis/bin/satis $BUILD_DIR/vendor/satis/bin/compile
+cd $BUILD_DIR
 echo "Complete" | indent
+cat >>$BUILD_DIR/vendor/bin/rebuild <<EOF
+#!/usr/bin/env bash
+
+satis build satis.json web/ --no-interaction && aws mkdir $S3_BUCKET && aws put $S3_BUCKET/index.html web/index.html --public && aws put $S3_BUCKET/packages.json web/packages.json --public
+
+EOF
+chmod +x $BUILD_DIR/vendor/bin/rebuild
 
 # run satis
 mkdir -p web
 echo "-----> Initalizing composer/satis"
-$1/$PHP_VENDOR/bin/php -c $1/$PHP_VENDOR/timezone.ini $1/vendor/satis/bin/satis build satis.json web/ | indent
-rm -rf $1/.composer/config.json
+$BUILD_DIR/$PHP_VENDOR/bin/php $BUILD_DIR/vendor/satis/bin/satis build satis.json $BUILD_DIR/web/ --no-interaction | indent
+$BUILD_DIR/vendor/bin/aws mkdir $S3_BUCKET | indent
+$BUILD_DIR/vendor/bin/aws put $S3_BUCKET/index.html web/index.html --public | indent
+$BUILD_DIR/vendor/bin/aws put $S3_BUCKET/packages.json web/packages.json --public | indent
+rm -rf $BUILD_DIR/.composer/config.json
+echo "Complete" | indent
+
+# create router.php
+echo "-----> Creating Router"
+cp -r $ROOT_DIR/www $BUILD_DIR
 echo "Complete" | indent
