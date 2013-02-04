@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# bin/compile <build-dir> <cache-dir>
+
+# Fail fast and fail hard.
+set -eo pipefail
+
+[ $(uname) == "Darwin" ] && SED_FLAG='-l' || SED_FLAG='-u'
+# Syntax sugar.
+indent() {
+    RE="s/^/       /"
+    sed $SED_FLAG "$RE"
+}
+
+DEFAULT_PHP_VERSION="5.4.11"
+PHP_S3_BUCKET="https://s3.amazonaws.com/rjoc-heroku"
+
+PHP_VENDOR="vendor/php"
+COMPOSER_LOCATION="https://getcomposer.org/composer.phar"
+COMPOSER_VENDOR="vendor/bin"
+SATIS_LOCATION="https://github.com/composer/satis/tarball/master"
+#GITHUB_API_KEY="" # used for the inital index) add yours or enable https://devcenter.heroku.com/articles/labs-user-env-compile
+
+# Work in the build directory
+cd $1
+
+# vendor php
+echo "-----> Vendoring PHP (v${DEFAULT_PHP_VERSION})"
+mkdir -p $1/$PHP_VENDOR
+curl --silent --max-time 60 --location $PHP_S3_BUCKET/php-$DEFAULT_PHP_VERSION.tgz | tar xz -C $1/$PHP_VENDOR
+echo "date.timezone='UTC'" >> $1/$PHP_VENDOR/timezone.ini
+echo "Complete" | indent
+
+# vendor composer
+echo "-----> Vendoring Composer"
+mkdir -p $1/$COMPOSER_VENDOR
+curl --silent --max-time 60 --location "$COMPOSER_LOCATION" > $1/$COMPOSER_VENDOR/composer.phar
+mkdir $1/.composer
+$1/$PHP_VENDOR/bin/php $1/$COMPOSER_VENDOR/composer.phar config --global github-oauth.github.com $GITHUB_API_KEY
+chmod 0755 $1/$COMPOSER_VENDOR/composer.phar
+echo "Complete" | indent
+
+mkdir $1/profile.d
+cat >>$1/profile.d/composer.sh <<EOF
+#!/usr/bin/env bash
+
+if [ -n "\$GITHUB_API_KEY" ]; then
+    composer.phar config --global github-oauth.github.com \$GITHUB_API_KEY;
+fi
+EOF
+
+# vendor satis
+echo "-----> Vendoring composer/satis"
+cd $1/vendor
+$1/$PHP_VENDOR/bin/php $1/$COMPOSER_VENDOR/composer.phar create-project composer/satis --stability=dev --prefer-dist | indent
+chmod 0755 $1/vendor/satis/bin/satis $1/vendor/satis/bin/compile
+cd $1
+echo "Complete" | indent
+
+# run satis
+mkdir -p web
+echo "-----> Initalizing composer/satis"
+$1/$PHP_VENDOR/bin/php -c $1/$PHP_VENDOR/timezone.ini $1/vendor/satis/bin/satis build satis.json web/ | indent
+rm -rf $1/.composer/config.json
+echo "Complete" | indent
