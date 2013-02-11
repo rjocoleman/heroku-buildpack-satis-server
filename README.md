@@ -23,7 +23,7 @@ $ heroku config:add S3_BUCKET=example-satis
 ```
 
 And push! Your Heroku app is now a Satis server. The index will be rebuilt on every deploy.
-If you have trouble deploying or indexing please read _Github API limits_ below.
+If you have trouble deploying or indexing please read _[Github API limits](#github-api-limits)_ below.
 
 
 ### Operating modes
