@@ -13,10 +13,10 @@ Configure your application to use this buildpack:
 $ heroku config:add BUILDPACK_URL=https://github.com/rjocoleman/heroku-buildpack-satis-server.git
 ```  
 ```
-$ heroku config:add AWS_ACCESS_KEY=123
+$ heroku config:add AWS_ACCESS_KEY_ID=123
 ```  
 ```
-$ heroku config:add AWS_SECRET_KEY=456
+$ heroku config:add AWS_SECRET_ACCESS_KEY=456
 ```  
 ```
 $ heroku config:add S3_BUCKET=example-satis
