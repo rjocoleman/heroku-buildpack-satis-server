@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+
+# don't forget to $ export AWS_ID=xxx AWS_SECRET=yyy S3_BUCKET=zzz
+
+set -e
+
+SVN_VERSION="$1"
+
+if [ -z "$SVN_VERSION" ]; then
+    echo "usage: $0 SVN_VERSION"
+    echo "e.g. $0 1.7.8"
+    exit 1
+fi
+
+if [ -z "$AWS_ID" ]; then
+    echo "must set AWS_ID"
+    echo "e.g. export AWS_ID=xxx"
+    exit 1
+fi
+
+if [ -z "$AWS_SECRET" ]; then
+    echo "must set AWS_SECRET"
+    echo "e.g. export AWS_SECRET=yyy"
+    exit 1
+fi
+
+if [ -z "$S3_BUCKET" ]; then
+    echo "must set S3_BUCKET"
+    echo "e.g. export S3_BUCKET=zzz"
+    exit 1
+fi
+
+basedir="$( cd -P "$( dirname "$0" )" && pwd )"
+
+echo "Preparing Subversion (v${SVN_VERSION})"
+cd $basedir
+# make a temp directory
+tempdir="$( mktemp -t subversion_XXXX )"
+rm -rf $tempdir
+mkdir -p $tempdir
+cd $tempdir
+
+#SVN dependacy versions
+APR_VERSION=1.4.6
+APR_UTIL_VERSION=1.5.1
+SQLITE_VERSION=3071502
+NEON_VERSION=0.29.6
+SERF_VERSION=1.2.0
+ZLIB_VERSION=1.2.7
+
+# download and extract subversion
+curl --silent --max-time 60 --location http://apache.insync.za.net/subversion/subversion-${SVN_VERSION}.tar.gz | tar xz
+
+# download and extract dependancies
+#apr
+mkdir -p subversion-${SVN_VERSION}/apr
+curl --silent --max-time 60 --location http://apache.insync.za.net//apr/apr-${APR_VERSION}.tar.gz | tar xz --strip=1 -C subversion-${SVN_VERSION}/apr
+
+#apr-util
+mkdir -p subversion-${SVN_VERSION}/apr-util
+curl --silent --max-time 60 --location http://apache.insync.za.net//apr/apr-util-${APR_UTIL_VERSION}.tar.gz | tar xz --strip=1 -C subversion-${SVN_VERSION}/apr-util
+
+#sqlite
+mkdir -p subversion-${SVN_VERSION}/sqlite-amalgamation
+curl --silent --max-time 60 --location http://www.sqlite.org/sqlite-autoconf-${SQLITE_VERSION}.tar.gz | tar xz --strip=1 -C subversion-${SVN_VERSION}/sqlite-amalgamation */sqlite3.c
+
+#neon
+mkdir -p subversion-${SVN_VERSION}/neon
+curl --silent --max-time 60 --location http://www.webdav.org/neon/neon-${NEON_VERSION}.tar.gz | tar xz --strip=1 -C subversion-${SVN_VERSION}/neon
+
+#serf
+mkdir -p subversion-${SVN_VERSION}/serf
+curl --silent --max-time 60 --location https://serf.googlecode.com/files/serf-${SERF_VERSION}.tar.bz2 | tar xj --strip=1 -C subversion-${SVN_VERSION}/serf
+
+#zlib
+mkdir -p subversion-${SVN_VERSION}/zlib
+curl --silent --max-time 60 --location http://zlib.net/zlib-${ZLIB_VERSION}.tar.gz | tar xz --strip=1 -C subversion-${SVN_VERSION}/zlib
+
+# build and package subversion for heroku  
+vulcan build -v \
+    -n subversion \
+    -c "./configure --prefix=/app/vendor/subversion --with-ssl --without-gssapi --without-swig --enable-all-static && make && make install" \
+    -p /app/vendor/subversion \
+    -s subversion-${SVN_VERSION} \
+    -o $tempdir/subversion-${SVN_VERSION}.tgz
+
+echo "Uploading Subversion to Amazon S3 bucket: ${S3_BUCKET}"
+# upload subversion to s3
+$basedir/aws/s3 put $S3_BUCKET \
+    subversion-${SVN_VERSION}.tgz $tempdir/subversion-${SVN_VERSION}.tgz
+echo "Build, package and upload of Subversion (v${SVN_VERSION}) complete"

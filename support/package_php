@@ -7,27 +7,32 @@ set -e
 PHP_VERSION="$1"
 
 if [ -z "$PHP_VERSION" ]; then
-    echo "usage: $0 VERSION"
+    echo "usage: $0 PHP_VERSION"
+    echo "e.g. $0 5.4.11"
     exit 1
 fi
 
 if [ -z "$AWS_ID" ]; then
     echo "must set AWS_ID"
+    echo "e.g. export AWS_ID=xxx"
     exit 1
 fi
 
 if [ -z "$AWS_SECRET" ]; then
     echo "must set AWS_SECRET"
+    echo "e.g. export AWS_SECRET=yyy"
     exit 1
 fi
 
 if [ -z "$S3_BUCKET" ]; then
     echo "must set S3_BUCKET"
+    echo "e.g. export S3_BUCKET=zzz"
     exit 1
 fi
 
 basedir="$( cd -P "$( dirname "$0" )" && pwd )"
 
+echo "Preparing PHP (v${PHP_VERSION})"
 # make a temp directory
 tempdir="$( mktemp -t php_XXXX )"
 rm -rf $tempdir
@@ -35,7 +40,7 @@ mkdir -p $tempdir
 cd $tempdir
 
 # download and extract php
-curl -L http://us.php.net/get/php-${PHP_VERSION}.tar.gz/from/www.php.net/mirror -o php-${PHP_VERSION}.tar.gz
+curl --silent --max-time 60 --location http://us.php.net/get/php-${PHP_VERSION}.tar.gz/from/www.php.net/mirror -o php-${PHP_VERSION}.tar.gz
 tar xzf php-${PHP_VERSION}.tar.gz
 
 # build and package php for heroku  
@@ -46,8 +51,8 @@ vulcan build -v \
     -s php-${PHP_VERSION} \
     -o $tempdir/php-${PHP_VERSION}.tgz
 
-echo "Uploading to s3"
+echo "Uploading PHP (v${PHP_VERSION}) to Amazon S3 bucket: ${S3_BUCKET}"
 # upload php to s3
 $basedir/aws/s3 put $S3_BUCKET \
     php-${PHP_VERSION}.tgz $tempdir/php-${PHP_VERSION}.tgz
-echo "Build, package and upload complete"
+echo "Build, package and upload of PHP (v${PHP_VERSION}) complete"

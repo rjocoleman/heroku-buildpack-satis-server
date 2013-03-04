@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+
+# don't forget to $ export AWS_ID=xxx AWS_SECRET=yyy S3_BUCKET=zzz
+
+set -e
+
+HG_VERSION="$1"
+
+if [ -z "$HG_VERSION" ]; then
+    echo "usage: $0 HG_VERSION"
+    echo "e.g. $0 2.5.2"
+    exit 1
+fi
+
+if [ -z "$AWS_ID" ]; then
+    echo "must set AWS_ID"
+    echo "e.g. export AWS_ID=xxx"
+    exit 1
+fi
+
+if [ -z "$AWS_SECRET" ]; then
+    echo "must set AWS_SECRET"
+    echo "e.g. export AWS_SECRET=yyy"
+    exit 1
+fi
+
+if [ -z "$S3_BUCKET" ]; then
+    echo "must set S3_BUCKET"
+    echo "e.g. export S3_BUCKET=zzz"
+    exit 1
+fi
+
+basedir="$( cd -P "$( dirname "$0" )" && pwd )"
+
+echo "Preparing Mercurial (v${HG_VERSION})"
+cd $basedir
+# make a temp directory
+tempdir="$( mktemp -t mercurial_XXXX )"
+rm -rf $tempdir
+mkdir -p $tempdir
+cd $tempdir
+
+# download and extract mercurial
+curl --silent --max-time 60 --location http://mercurial.selenic.com/release/mercurial-${HG_VERSION}.tar.gz | tar xz 
+
+# build and package mercurial for heroku  
+vulcan build -v \
+    -n mercurial \
+    -c "export PYTHONPATH=/app/vendor/mercurial/lib/python2.7/site-packages:${PYTHONPATH} && make install-bin PREFIX=/app/vendor/mercurial" \
+    -p /app/vendor/mercurial \
+    -s mercurial-${HG_VERSION} \
+    -o $tempdir/mercurial-${HG_VERSION}.tgz
+
+echo "Uploading Mercurial (v${HG_VERSION}) to Amazon S3 bucket: ${S3_BUCKET}"
+# upload HG to s3
+$basedir/aws/s3 put $S3_BUCKET \
+    mercurial-${HG_VERSION}.tgz $tempdir/mercurial-${HG_VERSION}.tgz
+echo "Build, package and upload of Mercurial (v${HG_VERSION}) complete"
